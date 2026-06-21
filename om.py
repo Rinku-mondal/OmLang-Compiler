@@ -2,7 +2,17 @@ import sys
 import os
 import re
 
-OM_VERSION = "v1.2.0-Production"
+OM_VERSION = "v2.0.0-Master"
+
+def smart_input(prompt=""):
+    """Automatically converts user input into text or numbers"""
+    val = input(prompt)
+    try:
+        if '.' in val:
+            return float(val)
+        return int(val)
+    except ValueError:
+        return val
 
 class OmCompiler:
     def __init__(self, filename):
@@ -22,80 +32,90 @@ class OmCompiler:
             sys.exit(1)
 
     def transpile_to_python(self):
-        """Core logic to transform Om code into optimized Python code"""
+        """Transpiles Om code into a final and powerful Python code"""
         py_code = []
         indent = 0
 
         for idx, line in enumerate(self.lines):
+            # Handle empty lines or comments
             if not line or line.startswith('#'):
                 py_code.append("    " * indent + line)
                 continue
 
-            # NEW REGEX: Match strings in quotes OR match numbers/words/operators
-            tokens = re.findall(r'"[^"\\]*(?:\\.[^"\\]*)*"|\'[^\'\\]*(?:\\.[^\'\\]*)*\'|[a-zA-Z_][a-zA-Z0-9_]*|\d+(?:\.\d+)?|\+|-|\*|/|=|<|>|==|!=', line)
+            # Token analysis (supports all types of mathematical and logical symbols)
+            tokens = re.findall(r'"[^"\\]*(?:\\.[^"\\]*)*"|\'[^\'\\]*(?:\\.[^\'\\]*)*\'|[a-zA-Z_][a-zA-Z0-9_]*|\d+(?:\.\d+)?|\+|-|\*|/|=|<|>|==|!=|<=|>=', line)
             if not tokens:
                 continue
 
             cmd = tokens[0]
 
-            # Variable Declaration: set x = 10
-            if cmd == "set" and len(tokens) >= 4 and tokens[2] == "=":
-                var_name = tokens[1]
-                expr = " ".join(tokens[3:])
-                py_code.append("    " * indent + f"{var_name} = {expr}")
-
-            # Print Output: show "hello"
-            elif cmd == "show":
+            # 1. Om language's signature 'show' keyword (Output)
+            if cmd == "show":
                 expr = " ".join(tokens[1:])
                 py_code.append("    " * indent + f"print({expr})")
 
-            # Conditional Logic: if x > 5
+            # 2. Conditional block (if)
             elif cmd == "if":
                 expr = " ".join(tokens[1:])
                 py_code.append("    " * indent + f"if {expr}:")
                 indent += 1
 
-            # Alternative Condition: else
+            # 3. Alternative conditional block (else)
             elif cmd == "else":
                 indent -= 1
                 py_code.append("    " * indent + "else:")
                 indent += 1
 
-            # Loop/Repeat Logic: repeat 5
+            # 4. Loop block (repeat)
             elif cmd == "repeat":
                 expr = " ".join(tokens[1:])
                 py_code.append("    " * indent + f"for _ in range(int({expr})):")
                 indent += 1
 
-            # Block Scope Ending: end
+            # 5. End of block (end)
             elif cmd == "end":
                 indent -= 1
                 if indent < 0:
                     print(f"Syntax Error (Line {idx+1}): Unexpected 'end' keyword.")
                     sys.exit(1)
+
+            # 6. Global expressions (Variables, math, input, and Python functions)
             else:
-                py_code.append("    " * indent + line)
+                # Convert input function to smart input
+                modified_line = line.replace("input(", "smart_input(").replace("input ", "smart_input ")
+                py_code.append("    " * indent + modified_line)
 
         return "\n".join(py_code)
 
     def run(self):
-        """Execute the .om file directly without banners"""
+        """Run code flawlessly without any banner"""
         py_source = self.transpile_to_python()
+        
+        # Useful Python built-in functions are provided here for the convenience of new users
+        global_context = {
+            'print': print,
+            'input': smart_input,
+            'smart_input': smart_input,
+            'int': int,
+            'float': float,
+            'str': str,
+            'len': len,
+            'range': range,
+            'round': round,
+            'abs': abs
+        }
         try:
-            exec(py_source, {})
+            exec(py_source, global_context)
         except Exception as e:
             print(f"Runtime Error: {e}")
 
     def transpile_only(self, target):
-        """Export raw code quietly"""
         if target == "python":
             base_name = os.path.splitext(self.filename)[0]
             output_file = f"{base_name}.py"
             code = self.transpile_to_python()
             with open(output_file, 'w', encoding='utf-8') as f:
                 f.write(code)
-        else:
-            print(f"Error: Target '{target}' support is coming soon.")
 
 def cli():
     if len(sys.argv) < 3:
@@ -113,8 +133,7 @@ def cli():
         compiler.run()
     elif action == "build" and len(sys.argv) == 5 and sys.argv[3] == "--target":
         compiler.transpile_only(sys.argv[4])
-    else:
-        print("Invalid CLI command configuration.")
 
 if __name__ == "__main__":
     cli()
+    
