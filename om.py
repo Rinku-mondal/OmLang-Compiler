@@ -3,7 +3,7 @@ import os
 import re
 import math
 
-OM_VERSION = "v2.7.0-Object-Oriented"
+OM_VERSION = "v2.7.1-Object-Oriented-Fixed"
 
 def smart_input(prompt=""):
     """Automatically converts user input into text or numerical types."""
@@ -44,8 +44,8 @@ class OmCompiler:
                 py_code.append("    " * indent + line)
                 continue
 
-            # Tokenizer supporting symbols, strings, and alphanumerics
-            tokens = re.findall(r'"[^"\\]*(?:\\.[^"\\]*)*"|\'[^\'\\]*(?:\\.[^\'\\]*)*\'|[a-zA-Z_][a-zA-Z0-9_]*|\d+(?:\.\d+)?|\+|-|\*|/|=|<|>|==|!=|<=|>=', line)
+            # FIXED TOKENIZER: Multi-character operators (==, !=, <=, >=) are checked first to prevent syntax splitting
+            tokens = re.findall(r'"[^"\\]*(?:\\.[^"\\]*)*"|\'[^\'\\]*(?:\\.[^\'\\]*)*\'|==|!=|<=|>=|[a-zA-Z_][a-zA-Z0-9_]*|\d+(?:\.\d+)?|\+|-|\*|/|=|<|>', line)
             if not tokens:
                 continue
 
@@ -56,7 +56,7 @@ class OmCompiler:
                 expr = " ".join(tokens[1:])
                 py_code.append("    " * indent + f"print({expr})")
 
-            # 2. Object Blueprint Block Definition -> [New Addition]
+            # 2. Object Blueprint Block Definition
             elif cmd == "object":
                 if len(tokens) < 2:
                     print(f"Syntax Error (Line {idx+1}): Object class name is missing.")
@@ -73,11 +73,9 @@ class OmCompiler:
                     sys.exit(1)
                 func_name = tokens[1]
                 
-                # If inside an object block, 'setup' becomes '__init__' and methods receive 'self'
                 if in_object_block:
                     if func_name == "setup":
                         func_name = "__init__"
-                    
                     args_list = ["self"] + tokens[2:]
                     args = ", ".join(args_list)
                 else:
@@ -134,7 +132,6 @@ class OmCompiler:
                 if indent < 0:
                     print(f"Syntax Error (Line {idx+1}): Unexpected 'end' keyword.")
                     sys.exit(1)
-                # Reset object tracking flag if the main object scope closes
                 if indent == 0:
                     in_object_block = False
 
@@ -142,10 +139,8 @@ class OmCompiler:
             else:
                 modified_line = line.replace("input(", "smart_input()").replace("input ", "smart_input ")
                 
-                # If assigning object properties inside an object method, map them safely
                 if in_object_block and indent > 1 and "=" in tokens:
                     eq_idx = tokens.index("=")
-                    # Make sure we are assigning a property name declared in setup
                     if eq_idx == 1:
                         modified_line = f"self.{tokens[0]} = " + " ".join(tokens[2:])
                 
@@ -212,4 +207,4 @@ def cli():
 
 if __name__ == "__main__":
     cli()
-    
+        
