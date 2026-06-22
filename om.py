@@ -2,9 +2,9 @@ import sys
 import os
 import re
 import math
-import time  # Imported for high-precision execution benchmarking
+import time
 
-OM_VERSION = "v2.8.0-Timed-Execution"
+OM_VERSION = "v2.8.1-Input-Fix"
 
 def smart_input(prompt=""):
     """Automatically converts user input into text or numerical types."""
@@ -124,8 +124,13 @@ class OmCompiler:
                 if indent == 0:
                     in_object_block = False
 
+            # 11. Global expressions, Variable assignments & Object assignments
             else:
-                modified_line = line.replace("input(", "smart_input()").replace("input ", "smart_input ")
+                # INTERCEPTOR FIX: Safely translate standalone assignment profiles (e.g., num1 = input)
+                if len(tokens) >= 3 and tokens[1] == '=' and tokens[2] == 'input':
+                    modified_line = f"{tokens[0]} = smart_input()"
+                else:
+                    modified_line = line.replace("input(", "smart_input()").replace("input ", "smart_input ")
                 
                 if in_object_block and indent > 1 and "=" in tokens:
                     eq_idx = tokens.index("=")
@@ -162,7 +167,6 @@ class OmCompiler:
             'om_current_dir': os.getcwd
         }
         
-        # Capture precise clock tick right before execution starts
         start_time = time.perf_counter()
         
         try:
@@ -170,13 +174,9 @@ class OmCompiler:
         except Exception as e:
             print(f"Runtime Error: {e}")
             
-        # Capture precise clock tick right after execution finishes
         end_time = time.perf_counter()
-        
-        # Calculate full elapsed duration in milliseconds
         execution_ms = (end_time - start_time) * 1000
         
-        # Clean runtime footer block display
         print("\n" + "-" * 40)
         print(f"OMlang Runtime: {execution_ms:.2f} ms")
         print("-" * 40)
