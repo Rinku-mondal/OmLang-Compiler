@@ -3,7 +3,7 @@ import os
 import re
 import math
 
-OM_VERSION = "v2.6.0-Intermediate"
+OM_VERSION = "v2.7.0-Object-Oriented"
 
 def smart_input(prompt=""):
     """Automatically converts user input into text or numerical types."""
@@ -33,9 +33,10 @@ class OmCompiler:
             sys.exit(1)
 
     def transpile_to_python(self):
-        """Transpiles OM source code into executable Python code with unique native functions."""
+        """Transpiles OM source code into executable Python code with unique native functions and Objects."""
         py_code = []
         indent = 0
+        in_object_block = False
 
         for idx, line in enumerate(self.lines):
             # Handle empty lines or comments
@@ -55,13 +56,43 @@ class OmCompiler:
                 expr = " ".join(tokens[1:])
                 py_code.append("    " * indent + f"print({expr})")
 
-            # 2. Conditionals (if)
+            # 2. Object Blueprint Block Definition -> [New Addition]
+            elif cmd == "object":
+                if len(tokens) < 2:
+                    print(f"Syntax Error (Line {idx+1}): Object class name is missing.")
+                    sys.exit(1)
+                obj_name = tokens[1]
+                py_code.append("    " * indent + f"class {obj_name}:")
+                indent += 1
+                in_object_block = True
+
+            # 3. Custom Functions & Object Methods (fn)
+            elif cmd == "fn":
+                if len(tokens) < 2:
+                    print(f"Syntax Error (Line {idx+1}): Function name is missing.")
+                    sys.exit(1)
+                func_name = tokens[1]
+                
+                # If inside an object block, 'setup' becomes '__init__' and methods receive 'self'
+                if in_object_block:
+                    if func_name == "setup":
+                        func_name = "__init__"
+                    
+                    args_list = ["self"] + tokens[2:]
+                    args = ", ".join(args_list)
+                else:
+                    args = ", ".join(tokens[2:])
+                    
+                py_code.append("    " * indent + f"def {func_name}({args}):")
+                indent += 1
+
+            # 4. Conditionals (if)
             elif cmd == "if":
                 expr = " ".join(tokens[1:])
                 py_code.append("    " * indent + f"if {expr}:")
                 indent += 1
 
-            # 3. Multi-conditionals (elif)
+            # 5. Multi-conditionals (elif)
             elif cmd == "elif":
                 indent -= 1
                 if indent < 0:
@@ -71,7 +102,7 @@ class OmCompiler:
                 py_code.append("    " * indent + f"elif {expr}:")
                 indent += 1
 
-            # 4. Alternative block (else)
+            # 6. Alternative block (else)
             elif cmd == "else":
                 indent -= 1
                 if indent < 0:
@@ -80,43 +111,44 @@ class OmCompiler:
                 py_code.append("    " * indent + "else:")
                 indent += 1
 
-            # 5. Fixed Loops (repeat)
+            # 7. Fixed Loops (repeat)
             elif cmd == "repeat":
                 expr = " ".join(tokens[1:])
                 py_code.append("    " * indent + f"for _ in range(int({expr})):")
                 indent += 1
 
-            # 6. Dynamic Loops (while)
+            # 8. Dynamic Loops (while)
             elif cmd == "while":
                 expr = " ".join(tokens[1:])
                 py_code.append("    " * indent + f"while {expr}:")
                 indent += 1
 
-            # 7. Custom Functions (fn)
-            elif cmd == "fn":
-                if len(tokens) < 2:
-                    print(f"Syntax Error (Line {idx+1}): Function name is missing.")
-                    sys.exit(1)
-                func_name = tokens[1]
-                args = ", ".join(tokens[2:])
-                py_code.append("    " * indent + f"def {func_name}({args}):")
-                indent += 1
-
-            # 8. Function Return Handling
+            # 9. Function Return Handling
             elif cmd == "return":
                 expr = " ".join(tokens[1:])
                 py_code.append("    " * indent + f"return {expr}")
 
-            # 9. Scope terminator (end)
+            # 10. Scope terminator (end)
             elif cmd == "end":
                 indent -= 1
                 if indent < 0:
                     print(f"Syntax Error (Line {idx+1}): Unexpected 'end' keyword.")
                     sys.exit(1)
+                # Reset object tracking flag if the main object scope closes
+                if indent == 0:
+                    in_object_block = False
 
-            # 10. Global expressions & Variable handling
+            # 11. Global expressions, Variable assignments & Object assignments
             else:
                 modified_line = line.replace("input(", "smart_input()").replace("input ", "smart_input ")
+                
+                # If assigning object properties inside an object method, map them safely
+                if in_object_block and indent > 1 and "=" in tokens:
+                    eq_idx = tokens.index("=")
+                    # Make sure we are assigning a property name declared in setup
+                    if eq_idx == 1:
+                        modified_line = f"self.{tokens[0]} = " + " ".join(tokens[2:])
+                
                 py_code.append("    " * indent + modified_line)
 
         if indent != 0:
@@ -126,7 +158,7 @@ class OmCompiler:
         return "\n".join(py_code)
 
     def run(self):
-        """Executes OM code with its own unique native libraries injected into the ecosystem."""
+        """Executes OM code with its own unique native libraries and objects injected."""
         py_source = self.transpile_to_python()
         
         global_context = {
@@ -180,3 +212,4 @@ def cli():
 
 if __name__ == "__main__":
     cli()
+    
