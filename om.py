@@ -1,17 +1,385 @@
 import sys
 import os
-import re
 import math
 import time
 
-OM_VERSION = "v2.8.1-Input-Fix"
+OM_VERSION = "v3.0.0-AST-Core"
 
+# =====================================================================
+# 1. THE LEXER (Tokenizes the source text smoothly)
+# =====================================================================
+class TokenType:
+    EOF = "EOF"
+    IDENTIFIER = "IDENTIFIER"
+    NUMBER = "NUMBER"
+    STRING = "STRING"
+    
+    # Keywords
+    SHOW = "show"
+    INPUT = "input"
+    IF = "if"
+    ELIF = "elif"
+    ELSE = "else"
+    END = "end"
+    WHILE = "while"
+    REPEAT = "repeat"
+    FN = "fn"
+    OBJECT = "object"
+    RETURN = "return"
+    
+    # Operators & Punctuations
+    ASSIGN = "="
+    PLUS = "+"
+    MINUS = "-"
+    MUL = "*"
+    DIV = "/"
+    LPAREN = "("
+    RPAREN = ")"
+    COMMA = ","
+    EQ = "=="
+    NEQ = "!="
+    LT = "<"
+    GT = ">"
+    LTE = "<="
+    GTE = ">="
+
+KEYWORDS = {
+    "show": TokenType.SHOW,
+    "input": TokenType.INPUT,
+    "if": TokenType.IF,
+    "elif": TokenType.ELIF,
+    "else": TokenType.ELSE,
+    "end": TokenType.END,
+    "while": TokenType.WHILE,
+    "repeat": TokenType.REPEAT,
+    "fn": TokenType.FN,
+    "object": TokenType.OBJECT,
+    "return": TokenType.RETURN
+}
+
+class Token:
+    def __init__(self, type_, value, line):
+        self.type = type_
+        self.value = value
+        self.line = line
+
+    def __repr__(self):
+        return f"Token({self.type}, {repr(self.value)}, line={self.line})"
+
+class OmLexer:
+    def __init__(self, text):
+        self.text = text
+        self.pos = 0
+        self.line_num = 1
+        self.current_char = self.text[0] if text else None
+
+    def advance(self):
+        self.pos += 1
+        if self.pos < len(self.text):
+            self.current_char = self.text[self.pos]
+        else:
+            self.current_char = None
+
+    def get_next_token(self):
+        while self.current_char is not None:
+            if self.current_char == '\n':
+                self.line_num += 1
+                self.advance()
+                continue
+            if self.current_char.isspace():
+                self.advance()
+                continue
+
+            if self.current_char == '#':
+                while self.current_char is not None and self.current_char != '\n':
+                    self.advance()
+                continue
+
+            if self.current_char in ('"', "'"):
+                quote = self.current_char
+                self.advance()
+                val = ""
+                while self.current_char is not None and self.current_char != quote:
+                    val += self.current_char
+                    self.advance()
+                if self.current_char is None:
+                    print(f"Lexer Error (Line {self.line_num}): Unterminated string literal.")
+                    sys.exit(1)
+                self.advance()
+                return Token(TokenType.STRING, val, self.line_num)
+
+            if self.current_char.isdigit() or self.current_char == '.':
+                val = ""
+                while self.current_char is not None and (self.current_char.isdigit() or self.current_char == '.'):
+                    val += self.current_char
+                    self.advance()
+                return Token(TokenType.NUMBER, val, self.line_num)
+
+            if self.current_char.isalpha() or self.current_char == '_':
+                val = ""
+                while self.current_char is not None and (self.current_char.isalnum() or self.current_char == '_'):
+                    val += self.current_char
+                    self.advance()
+                lower_val = val.lower()
+                t_type = KEYWORDS.get(lower_val, TokenType.IDENTIFIER)
+                return Token(t_type, val if t_type == TokenType.IDENTIFIER else lower_val, self.line_num)
+
+            if self.current_char == '=':
+                self.advance()
+                if self.current_char == '=':
+                    self.advance()
+                    return Token(TokenType.EQ, "==", self.line_num)
+                return Token(TokenType.ASSIGN, "=", self.line_num)
+            if self.current_char == '!':
+                self.advance()
+                if self.current_char == '=':
+                    self.advance()
+                    return Token(TokenType.NEQ, "!=", self.line_num)
+                print(f"Lexer Error (Line {self.line_num}): Unknown token structure '!'")
+                sys.exit(1)
+            if self.current_char == '<':
+                self.advance()
+                if self.current_char == '=':
+                    self.advance()
+                    return Token(TokenType.LTE, "<=", self.line_num)
+                return Token(TokenType.LT, "<", self.line_num)
+            if self.current_char == '>':
+                self.advance()
+                if self.current_char == '=':
+                    self.advance()
+                    return Token(TokenType.GTE, ">=", self.line_num)
+                return Token(TokenType.GT, ">", self.line_num)
+
+            mapping = {
+                '+': TokenType.PLUS, '-': TokenType.MINUS, '*': TokenType.MUL,
+                '/': TokenType.DIV,  '(': TokenType.LPAREN, ')': TokenType.RPAREN,
+                ',': TokenType.COMMA
+            }
+            if self.current_char in mapping:
+                t = Token(mapping[self.current_char], self.current_char, self.line_num)
+                self.advance()
+                return t
+
+            print(f"Lexer Error (Line {self.line_num}): Invalid character '{self.current_char}'")
+            sys.exit(1)
+
+        return Token(TokenType.EOF, None, self.line_num)
+
+# =====================================================================
+# 2. THE PARSER (Builds structural trees from logic)
+# =====================================================================
+class ASTNode: pass
+class ProgramNode(ASTNode):
+    def __init__(self, body): self.body = body
+class ShowNode(ASTNode):
+    def __init__(self, exprs): self.exprs = exprs
+class AssignNode(ASTNode):
+    def __init__(self, name, value): self.name = name; self.value = value
+class BinOpNode(ASTNode):
+    def __init__(self, left, op, right): self.left = left; self.op = op; self.right = right
+class VarNode(ASTNode):
+    def __init__(self, name): self.name = name
+class NumNode(ASTNode):
+    def __init__(self, val): self.val = val
+class StringNode(ASTNode):
+    def __init__(self, val): self.val = val
+class InputNode(ASTNode): pass
+
+class IfNode(ASTNode):
+    def __init__(self, condition, body, o_elifs, o_else):
+        self.condition = condition; self.body = body
+        self.elifs = o_elifs; self.else_body = o_else
+
+class OmParser:
+    def __init__(self, lexer):
+        self.lexer = lexer
+        self.current_token = self.lexer.get_next_token()
+
+    def error(self, msg):
+        print(f"Syntax Error (Line {self.current_token.line}): {msg}")
+        sys.exit(1)
+
+    def consume(self, token_type):
+        if self.current_token.type == token_type:
+            self.current_token = self.lexer.get_next_token()
+        else:
+            self.error(f"Expected token {token_type}, found {self.current_token.type}")
+
+    def parse(self):
+        body = []
+        while self.current_token.type != TokenType.EOF:
+            stmt = self.statement()
+            if stmt: body.append(stmt)
+        return ProgramNode(body)
+
+    def statement(self):
+        t = self.current_token
+        if t.type == TokenType.SHOW:
+            self.consume(TokenType.SHOW)
+            exprs = [self.expr()]
+            while self.current_token.type == TokenType.COMMA:
+                self.consume(TokenType.COMMA)
+                exprs.append(self.expr())
+            return ShowNode(exprs)
+            
+        elif t.type == TokenType.IF:
+            return self.parse_if_block()
+            
+        elif t.type == TokenType.IDENTIFIER:
+            name = t.value
+            self.consume(TokenType.IDENTIFIER)
+            self.consume(TokenType.ASSIGN)
+            val = self.expr()
+            return AssignNode(name, val)
+            
+        elif t.type in (TokenType.END, TokenType.ELIF, TokenType.ELSE):
+            return None
+        else:
+            self.error(f"Unexpected base command pattern '{t.value}'")
+
+    def parse_if_block(self):
+        self.consume(TokenType.IF)
+        cond = self.expr()
+        if_body = []
+        elifs = []
+        else_body = []
+
+        while self.current_token.type not in (TokenType.END, TokenType.ELIF, TokenType.ELSE, TokenType.EOF):
+            s = self.statement()
+            if s: if_body.append(s)
+
+        while self.current_token.type == TokenType.ELIF:
+            self.consume(TokenType.ELIF)
+            elif_cond = self.expr()
+            elif_body = []
+            while self.current_token.type not in (TokenType.END, TokenType.ELIF, TokenType.ELSE, TokenType.EOF):
+                s = self.statement()
+                if s: elif_body.append(s)
+            elifs.append((elif_cond, elif_body))
+
+        if self.current_token.type == TokenType.ELSE:
+            self.consume(TokenType.ELSE)
+            while self.current_token.type not in (TokenType.END, TokenType.EOF):
+                s = self.statement()
+                if s: else_body.append(s)
+
+        self.consume(TokenType.END)
+        return IfNode(cond, if_body, elifs, else_body)
+
+    def expr(self):
+        return self.comparison()
+
+    def comparison(self):
+        node = self.arithmetic()
+        ops = (TokenType.EQ, TokenType.NEQ, TokenType.LT, TokenType.GT, TokenType.LTE, TokenType.GTE)
+        if self.current_token.type in ops:
+            op = self.current_token.value
+            self.consume(self.current_token.type)
+            node = BinOpNode(node, op, self.arithmetic())
+        return node
+
+    def arithmetic(self):
+        node = self.term()
+        while self.current_token.type in (TokenType.PLUS, TokenType.MINUS):
+            op = self.current_token.value
+            self.consume(self.current_token.type)
+            node = BinOpNode(node, op, self.term())
+        return node
+
+    def term(self):
+        node = self.factor()
+        while self.current_token.type in (TokenType.MUL, TokenType.DIV):
+            op = self.current_token.value
+            self.consume(self.current_token.type)
+            node = BinOpNode(node, op, self.factor())
+        return node
+
+    def factor(self):
+        t = self.current_token
+        if t.type == TokenType.NUMBER:
+            self.consume(TokenType.NUMBER)
+            return NumNode(t.value)
+        elif t.type == TokenType.STRING:
+            self.consume(TokenType.STRING)
+            return StringNode(t.value)
+        elif t.type == TokenType.INPUT:
+            self.consume(TokenType.INPUT)
+            if self.current_token.type == TokenType.LPAREN:
+                self.consume(TokenType.LPAREN)
+                self.consume(TokenType.RPAREN)
+            return InputNode()
+        elif t.type == TokenType.IDENTIFIER:
+            self.consume(TokenType.IDENTIFIER)
+            return VarNode(t.value)
+        elif t.type == TokenType.LPAREN:
+            self.consume(TokenType.LPAREN)
+            node = self.expr()
+            self.consume(TokenType.RPAREN)
+            return node
+        self.error(f"Unexpected math or string factor '{t.value}'")
+
+# =====================================================================
+# 3. CODE GENERATOR (Converts our AST into executable Python safely)
+# =====================================================================
+class OmGenerator:
+    def __init__(self):
+        self.indent_level = 0
+
+    def generate(self, node):
+        if isinstance(node, ProgramNode):
+            return "\n".join(self.generate(s) for s in node.body)
+        
+        spacing = "    " * self.indent_level
+        
+        if isinstance(node, ShowNode):
+            args = ", ".join(self.generate(e) for e in node.exprs)
+            return f"{spacing}print({args})"
+            
+        elif isinstance(node, AssignNode):
+            return f"{spacing}{node.name} = {self.generate(node.value)}"
+            
+        elif isinstance(node, InputNode):
+            return "smart_input()"
+            
+        elif isinstance(node, BinOpNode):
+            return f"({self.generate(node.left)} {node.op} {self.generate(node.right)})"
+            
+        elif isinstance(node, VarNode):
+            return node.name
+            
+        elif isinstance(node, NumNode):
+            return node.val
+            
+        elif isinstance(node, StringNode):
+            return f'"{node.val}"'
+            
+        elif isinstance(node, IfNode):
+            lines = [f"{spacing}if {self.generate(node.condition)}:"]
+            self.indent_level += 1
+            for s in node.body: lines.append(self.generate(s))
+            self.indent_level -= 1
+            
+            for cond, body in node.elifs:
+                lines.append(f"{spacing}elif {self.generate(cond)}:")
+                self.indent_level += 1
+                for s in body: lines.append(self.generate(s))
+                self.indent_level -= 1
+                
+            if node.else_body:
+                lines.append(f"{spacing}else:")
+                self.indent_level += 1
+                for s in node.else_body: lines.append(self.generate(s))
+                self.indent_level -= 1
+                
+            return "\n".join(lines)
+
+# =====================================================================
+# 4. RUNTIME SYSTEM ENVIRONMENT SETUP
+# =====================================================================
 def smart_input(prompt=""):
-    """Automatically converts user input into text or numerical types."""
     val = input(prompt)
     try:
-        if '.' in val:
-            return float(val)
+        if '.' in val: return float(val)
         return int(val)
     except ValueError:
         return val
@@ -19,7 +387,7 @@ def smart_input(prompt=""):
 class OmCompiler:
     def __init__(self, filename):
         self.filename = filename
-        self.lines = []
+        self.source_text = ""
         self.load_file()
 
     def load_file(self):
@@ -28,147 +396,27 @@ class OmCompiler:
             sys.exit(1)
         try:
             with open(self.filename, 'r', encoding='utf-8') as f:
-                self.lines = [line.strip() for line in f.readlines()]
+                self.source_text = f.read()
         except FileNotFoundError:
             print(f"Error: File '{self.filename}' not found.")
             sys.exit(1)
 
-    def transpile_to_python(self):
-        """Transpiles OM source code into executable Python code with unique native functions and Objects."""
-        py_code = []
-        indent = 0
-        in_object_block = False
-
-        for idx, line in enumerate(self.lines):
-            if not line or line.startswith('#'):
-                py_code.append("    " * indent + line)
-                continue
-
-            tokens = re.findall(r'"[^"\\]*(?:\\.[^"\\]*)*"|\'[^\'\\]*(?:\\.[^\'\\]*)*\'|==|!=|<=|>=|[a-zA-Z_][a-zA-Z0-9_]*|\d+(?:\.\d+)?|\+|-|\*|/|=|<|>|,', line)
-            if not tokens:
-                continue
-
-            cmd = tokens[0]
-
-            if cmd == "show":
-                expr = " ".join(tokens[1:])
-                py_code.append("    " * indent + f"print({expr})")
-
-            elif cmd == "object":
-                if len(tokens) < 2:
-                    print(f"Syntax Error (Line {idx+1}): Object class name is missing.")
-                    sys.exit(1)
-                obj_name = tokens[1]
-                py_code.append("    " * indent + f"class {obj_name}:")
-                indent += 1
-                in_object_block = True
-
-            elif cmd == "fn":
-                if len(tokens) < 2:
-                    print(f"Syntax Error (Line {idx+1}): Function name is missing.")
-                    sys.exit(1)
-                func_name = tokens[1]
-                
-                if in_object_block:
-                    if func_name == "setup":
-                        func_name = "__init__"
-                    args_list = ["self"] + tokens[2:]
-                    args = ", ".join(args_list)
-                else:
-                    args = ", ".join(tokens[2:])
-                    
-                py_code.append("    " * indent + f"def {func_name}({args}):")
-                indent += 1
-
-            elif cmd == "if":
-                expr = " ".join(tokens[1:])
-                py_code.append("    " * indent + f"if {expr}:")
-                indent += 1
-
-            elif cmd == "elif":
-                indent -= 1
-                if indent < 0:
-                    print(f"Syntax Error (Line {idx+1}): Unexpected 'elif' keyword.")
-                    sys.exit(1)
-                expr = " ".join(tokens[1:])
-                py_code.append("    " * indent + f"elif {expr}:")
-                indent += 1
-
-            elif cmd == "else":
-                indent -= 1
-                if indent < 0:
-                    print(f"Syntax Error (Line {idx+1}): Unexpected 'else' keyword.")
-                    sys.exit(1)
-                py_code.append("    " * indent + "else:")
-                indent += 1
-
-            elif cmd == "repeat":
-                expr = " ".join(tokens[1:])
-                py_code.append("    " * indent + f"for _ in range(int({expr})):")
-                indent += 1
-
-            elif cmd == "while":
-                expr = " ".join(tokens[1:])
-                py_code.append("    " * indent + f"while {expr}:")
-                indent += 1
-
-            elif cmd == "return":
-                expr = " ".join(tokens[1:])
-                py_code.append("    " * indent + f"return {expr}")
-
-            elif cmd == "end":
-                indent -= 1
-                if indent < 0:
-                    print(f"Syntax Error (Line {idx+1}): Unexpected 'end' keyword.")
-                    sys.exit(1)
-                if indent == 0:
-                    in_object_block = False
-
-            # 11. Global expressions, Variable assignments & Object assignments
-            else:
-                # INTERCEPTOR FIX: Safely translate standalone assignment profiles (e.g., num1 = input)
-                if len(tokens) >= 3 and tokens[1] == '=' and tokens[2] == 'input':
-                    modified_line = f"{tokens[0]} = smart_input()"
-                else:
-                    modified_line = line.replace("input(", "smart_input()").replace("input ", "smart_input ")
-                
-                if in_object_block and indent > 1 and "=" in tokens:
-                    eq_idx = tokens.index("=")
-                    if eq_idx == 1:
-                        modified_line = f"self.{tokens[0]} = " + " ".join(tokens[2:])
-                
-                py_code.append("    " * indent + modified_line)
-
-        if indent != 0:
-            print("Syntax Error: Missing 'end' keyword somewhere in your code.")
-            sys.exit(1)
-
-        return "\n".join(py_code)
-
     def run(self):
-        """Executes OM code and profiles exact runtime duration automatically."""
-        py_source = self.transpile_to_python()
+        lexer = OmLexer(self.source_text)
+        parser = OmParser(lexer)
+        ast = parser.parse()
+        
+        generator = OmGenerator()
+        py_source = generator.generate(ast)
         
         global_context = {
             'print': print,
-            'input': smart_input,
             'smart_input': smart_input,
-            'int': int,
-            'float': float,
-            'str': str,
-            'len': len,
-            'range': range,
-            'round': round,
-            'abs': abs,
-            'om_root': math.sqrt,
-            'om_power': math.pow,
-            'om_pi': math.pi,
-            'om_system_os': os.name,
-            'om_current_dir': os.getcwd
+            'int': int, 'float': float, 'str': str, 'len': len,
+            'round': round, 'abs': abs, 'math': math
         }
         
         start_time = time.perf_counter()
-        
         try:
             exec(py_source, global_context)
         except Exception as e:
@@ -176,36 +424,15 @@ class OmCompiler:
             
         end_time = time.perf_counter()
         execution_ms = (end_time - start_time) * 1000
-        
-        print("\n" + "-" * 40)
-        print(f"OMlang Runtime: {execution_ms:.2f} ms")
-        print("-" * 40)
-
-    def transpile_only(self, target):
-        if target == "python":
-            base_name = os.path.splitext(self.filename)[0]
-            output_file = f"{base_name}.py"
-            code = self.transpile_to_python()
-            with open(output_file, 'w', encoding='utf-8') as f:
-                f.write(code)
+        print(f"\n----------------------------------------\nOMlang Runtime: {execution_ms:.2f} ms\n----------------------------------------")
 
 def cli():
-    if len(sys.argv) < 3:
-        print("Om CLI Usage:")
-        print("  om run <filename.om>")
-        print("  om build <filename.om> --target python")
+    if len(sys.argv) < 3 or sys.argv[1] != "run":
+        print("Om CLI Usage: om run <filename.om>")
         return
-
-    action = sys.argv[1]
-    filename = sys.argv[2]
-    
-    compiler = OmCompiler(filename)
-
-    if action == "run":
-        compiler.run()
-    elif action == "build" and len(sys.argv) == 5 and sys.argv[3] == "--target":
-        compiler.transpile_only(sys.argv[4])
+    compiler = OmCompiler(sys.argv[2])
+    compiler.run()
 
 if __name__ == "__main__":
     cli()
-    
+        
