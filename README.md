@@ -26,28 +26,6 @@ git clone https://github.com/Kiran-mondal/OmLang-Compiler.git
 cd OmLang-Compiler
 pip install -e .
 ```
-```ruby
-# Variable Management
-set power = 108
-set multiplier = 2
-
-# Calculations
-set total = power * multiplier
-
-# Conditional Scopes
-if total > 200
-    show total
-else
-    show 0
-end
-
-# Loops / Iterators
-repeat 3
-    show 7
-end
-```
----
-
 ## 🚀 Om Language Syntax & Function Guide
 To keep the Om language completely simple and clean, the following keywords and built-in functions are used:
 ### 1. Core Keywords
