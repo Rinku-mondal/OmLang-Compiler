@@ -1,13 +1,12 @@
 # =====================================================================
-# MODULE: om-core/main.py (DYNAMIC PATH INJECTION ENGINE)
+# MODULE: om-core/main.py
 # =====================================================================
 import sys
 import os
 
-# NATIVE FIX: Inject this folder directly into the path to clear import blocks
+# Dynamic path injection (Fixes import errors completely)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# Now clean, standard imports work perfectly everywhere
 from opcodes import OpCode
 from lexer import OmLexer, TokenType
 from parser import OmParser
@@ -67,5 +66,6 @@ def main_entry():
         print(f"CLI Error: Unknown operation token '{command}' entered.")
         show_help_menu()
 
-if name == "main":
+if __name__ == "__main__":
     main_entry()
+    
