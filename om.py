@@ -3,10 +3,10 @@ import os
 import math
 import time
 
-OM_VERSION = "v3.2.0-Std-Libraries"
+OM_VERSION = "v3.3.0-English-Core-Libs"
 
 # =====================================================================
-# 1. THE LEXER (With Multi-Language Tokens)
+# 1. THE LEXER (Strictly English Keywords & Standard Identifiers)
 # =====================================================================
 class TokenType:
     EOF = "EOF"
@@ -43,23 +43,18 @@ class TokenType:
     LTE = "<="
     GTE = ">="
 
-MULTILINGUAL_KEYWORDS = {
-    # English
-    "show": TokenType.SHOW, "input": TokenType.INPUT, "if": TokenType.IF,
-    "elif": TokenType.ELIF, "else": TokenType.ELSE, "end": TokenType.END,
-    "while": TokenType.WHILE, "repeat": TokenType.REPEAT, "fn": TokenType.FN,
-    "return": TokenType.RETURN, "object": TokenType.OBJECT,
-    
-    # Hindi (हिन्दी)
-    "दिखाओ": TokenType.SHOW, "पूछो": TokenType.INPUT, "अगर": TokenType.IF,
-    "यानी": TokenType.ELIF, "वरना": TokenType.ELSE, "खत्म": TokenType.END,
-    "जबतक": TokenType.WHILE, "दोहराओ": TokenType.REPEAT, "कार्य": TokenType.FN,
-    "वापस": TokenType.RETURN,
-    
-    # Bengali (বাংলা)
-    "দেখাও": TokenType.SHOW, "জিজ্ঞেস": TokenType.INPUT, "যদি": TokenType.IF,
-    "অথবা": TokenType.ELIF, "নাহলে": TokenType.ELSE, "শেষ": TokenType.END,
-    "যতক্ষণ": TokenType.WHILE, "পুনরাবৃত্তি": TokenType.REPEAT
+ENGLISH_KEYWORDS = {
+    "show": TokenType.SHOW,
+    "input": TokenType.INPUT,
+    "if": TokenType.IF,
+    "elif": TokenType.ELIF,
+    "else": TokenType.ELSE,
+    "end": TokenType.END,
+    "while": TokenType.WHILE,
+    "repeat": TokenType.REPEAT,
+    "fn": TokenType.FN,
+    "object": TokenType.OBJECT,
+    "return": TokenType.RETURN
 }
 
 class Token:
@@ -120,13 +115,17 @@ class OmLexer:
                     self.advance()
                 return Token(TokenType.NUMBER, val, self.line_num)
 
-            if self.current_char.isalpha() or self.current_char == '_' or ord(self.current_char) > 127:
+            # Strictly parsing standard ASCII English alphanumeric sequences
+            if self.current_char.isalpha() or self.current_char == '_':
                 val = ""
-                while self.current_char is not None and (self.current_char.isalnum() or self.current_char == '_' or ord(self.current_char) > 127):
+                while self.current_char is not None and (self.current_char.isalnum() or self.current_char == '_'):
                     val += self.current_char
                     self.advance()
-                t_type = MULTILINGUAL_KEYWORDS.get(val, TokenType.IDENTIFIER)
-                return Token(t_type, val, self.line_num)
+                
+                # Enforce clean case-insensitivity on standard keywords
+                lower_val = val.lower()
+                t_type = ENGLISH_KEYWORDS.get(lower_val, TokenType.IDENTIFIER)
+                return Token(t_type, val if t_type == TokenType.IDENTIFIER else lower_val, self.line_num)
 
             if self.current_char == '=':
                 self.advance()
@@ -170,7 +169,7 @@ class OmLexer:
         return Token(TokenType.EOF, None, self.line_num)
 
 # =====================================================================
-# 2. THE PARSER (With Functional and Variable Library Lookups)
+# 2. THE PARSER (Assembles trees & supports explicit Library Calls)
 # =====================================================================
 class ASTNode: pass
 class ProgramNode(ASTNode):
@@ -235,7 +234,6 @@ class OmParser:
             name = t.value
             self.consume(TokenType.IDENTIFIER)
             
-            # Catching function execution calls from libraries
             if self.current_token.type == TokenType.LPAREN:
                 self.consume(TokenType.LPAREN)
                 args = []
@@ -408,7 +406,7 @@ class OmGenerator:
             return "\n".join(lines)
 
 # =====================================================================
-# 4. RUNTIME SYSTEM & BUILT-IN LIBRARIES
+# 4. RUNTIME ENVIRONMENT & ENGLISH SYSTEM LIBRARIES
 # =====================================================================
 def smart_input(prompt=""):
     val = input(prompt)
@@ -443,25 +441,26 @@ class OmCompiler:
         generator = OmGenerator()
         py_source = generator.generate(ast)
         
-        # Mapping specialized, multi-lingual mathematical and system library functions
+        # English-exclusive global context with clean library spaces
         global_context = {
             'print': print,
             'smart_input': smart_input,
             'int': int, 'float': float, 'str': str, 'len': len,
             'round': round, 'abs': abs,
             
-            # --- Library 1: Core Mathematics (गणित / গণিত) ---
-            'om_वर्गमूल': math.sqrt,    'om_sqrt': math.sqrt,
-            'om_घातांक': math.pow,     'om_pow': math.pow,
-            'om_पाई': math.pi,         'om_pi': math.pi,
+            # --- Library: om_math ---
+            'om_math_sqrt': math.sqrt,
+            'om_math_pow': math.pow,
+            'om_math_abs': math.fabs,
+            'om_math_pi': lambda: math.pi,
             
-            # --- Library 2: System Environment (सिस्टम) ---
-            'om_प्रणाली': lambda: os.name, 'om_os': lambda: os.name,
-            'om_मार्ग': os.getcwd,          'om_cwd': os.getcwd,
+            # --- Library: om_sys ---
+            'om_sys_platform': lambda: sys.platform,
+            'om_sys_cwd': os.getcwd,
             
-            # --- Library 3: Time Tracking (समय) ---
-            'om_समय戳': time.time,      'om_timestamp': time.time,
-            'om_सो जाओ': time.sleep,     'om_sleep': time.sleep
+            # --- Library: om_time ---
+            'om_time_now': time.time,
+            'om_time_sleep': time.sleep
         }
         
         start_time = time.perf_counter()
@@ -483,4 +482,4 @@ def cli():
 
 if __name__ == "__main__":
     cli()
-                
+            
