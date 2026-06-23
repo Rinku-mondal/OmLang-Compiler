@@ -1,29 +1,25 @@
 # =====================================================================
-# MODULE: om-core/main.py (UNIVERSAL PATH CLI DRIVER)
+# MODULE: om-core/main.py (DYNAMIC PATH INJECTION ENGINE)
 # =====================================================================
 import sys
 import os
 
-# Robust import layer that completely ignores the physical folder name
-try:
-    from .opcodes import OpCode
-    from .lexer import OmLexer, TokenType
-    from .parser import OmParser
-    from .compiler import OmBytecodeCompiler
-    from .vm import OmVirtualMachine
-except (ImportError, SyntaxError, ValueError):
-    from opcodes import OpCode
-    from lexer import OmLexer, TokenType
-    from parser import OmParser
-    from compiler import OmBytecodeCompiler
-    from vm import OmVirtualMachine
+# NATIVE FIX: Inject this folder directly into the path to clear import blocks
+sys.path.insert(0, os.path.dirname(os.path.abspath(file)))
+
+# Now clean, standard imports work perfectly everywhere
+from opcodes import OpCode
+from lexer import OmLexer, TokenType
+from parser import OmParser
+from compiler import OmBytecodeCompiler
+from vm import OmVirtualMachine
 
 def execute_file_pipeline(filepath):
     if not os.path.exists(filepath):
         print(f"System Error: File target location '{filepath}' could not be resolved.")
         sys.exit(1)
     if not filepath.endswith('.om') and not filepath.endswith('.omb'):
-        print("System Error: The Om engine only executes native '.om' or compiled '.omb' files.")
+        print("System Error: The Om engine only executes native '.om' files.")
         sys.exit(1)
 
     try:
